@@ -328,8 +328,7 @@ class CopilotClient:
 
             return StopError(
                 message=(
-                    f"Failed to destroy session {session.session_id} "
-                    f"after 3 attempts: {last_error}"
+                    f"Failed to destroy session {session.session_id} after 3 attempts: {last_error}"
                 )
             )
 
