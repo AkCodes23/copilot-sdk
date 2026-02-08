@@ -313,13 +313,30 @@ class CopilotClient:
             sessions_to_destroy = list(self._sessions.values())
             self._sessions.clear()
 
-        for session in sessions_to_destroy:
-            try:
-                await session.destroy()
-            except Exception as e:
-                errors.append(
-                    StopError(message=f"Failed to destroy session {session.session_id}: {e}")
+        async def destroy_with_retry(session: CopilotSession) -> Optional[StopError]:
+            """Destroy a session with up to 3 attempts and exponential backoff."""
+            last_err: Optional[Exception] = None
+            for attempt in range(1, 4):
+                try:
+                    await session.destroy()
+                    return None
+                except Exception as e:
+                    last_err = e
+                    if attempt < 3:
+                        # Exponential backoff: 100ms, 200ms
+                        delay = 0.1 * (2 ** (attempt - 1))
+                        await asyncio.sleep(delay)
+
+            return StopError(
+                message=(
+                    f"Failed to destroy session {session.session_id} after 3 attempts: {last_err}"
                 )
+            )
+
+        # Destroy all active sessions in parallel with retry logic
+        if sessions_to_destroy:
+            results = await asyncio.gather(*(destroy_with_retry(s) for s in sessions_to_destroy))
+            errors.extend([r for r in results if r is not None])
 
         # Close client
         if self._client:
