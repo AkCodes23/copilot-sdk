@@ -10,6 +10,7 @@ using System.Collections.Concurrent;
 using System.Data;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 using System.Net.Sockets;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -210,21 +211,34 @@ public partial class CopilotClient : IDisposable, IAsyncDisposable
     /// </example>
     public async Task StopAsync()
     {
-        var errors = new List<Exception>();
-
-        foreach (var session in _sessions.Values.ToArray())
-        {
-            try
-            {
-                await session.DisposeAsync();
-            }
-            catch (Exception ex)
-            {
-                errors.Add(new Exception($"Failed to destroy session {session.SessionId}: {ex.Message}", ex));
-            }
-        }
-
+        var sessionsToDestroy = _sessions.Values.ToArray();
         _sessions.Clear();
+
+        var sessionTasks = sessionsToDestroy.Select(async session =>
+        {
+            Exception? lastEx = null;
+            for (int attempt = 1; attempt <= 3; attempt++)
+            {
+                try
+                {
+                    await session.DisposeAsync();
+                    return null;
+                }
+                catch (Exception ex)
+                {
+                    lastEx = ex;
+                    if (attempt < 3)
+                    {
+                        // Exponential backoff: 100ms, 200ms
+                        await Task.Delay(100 * (1 << (attempt - 1)));
+                    }
+                }
+            }
+            return new Exception($"Failed to destroy session {session.SessionId} after 3 attempts: {lastEx?.Message}", lastEx);
+        });
+
+        var results = await Task.WhenAll(sessionTasks);
+        var errors = results.Where(e => e != null).Cast<Exception>().ToList();
         await CleanupConnectionAsync(errors);
         _connectionTask = null;
 

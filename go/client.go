@@ -294,10 +294,34 @@ func (c *Client) Stop() error {
 	}
 	c.sessionsMux.Unlock()
 
+	var wg sync.WaitGroup
+	errChan := make(chan error, len(sessions))
+
 	for _, session := range sessions {
-		if err := session.Destroy(); err != nil {
-			errs = append(errs, fmt.Errorf("failed to destroy session %s: %w", session.SessionID, err))
-		}
+		wg.Add(1)
+		go func(s *Session) {
+			defer wg.Done()
+			var lastErr error
+			for attempt := 1; attempt <= 3; attempt++ {
+				if err := s.Destroy(); err != nil {
+					lastErr = err
+					if attempt < 3 {
+						// Exponential backoff: 100ms, 200ms
+						time.Sleep(time.Duration(100*(1<<(attempt-1))) * time.Millisecond)
+					}
+				} else {
+					return
+				}
+			}
+			errChan <- fmt.Errorf("failed to destroy session %s after 3 attempts: %w", s.SessionID, lastErr)
+		}(session)
+	}
+
+	wg.Wait()
+	close(errChan)
+
+	for err := range errChan {
+		errs = append(errs, err)
 	}
 
 	c.sessionsMux.Lock()
