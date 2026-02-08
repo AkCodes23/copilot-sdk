@@ -198,7 +198,8 @@ class TestSessions:
         await session2.send_and_wait({"prompt": "Say goodbye"})
 
         # Small delay to ensure session files are written to disk
-        await asyncio.sleep(0.2)
+        # Increased to 0.5s to avoid flakiness on slower environments (e.g. Windows CI)
+        await asyncio.sleep(0.5)
 
         # List sessions and verify they're included
         sessions = await ctx.client.list_sessions()
@@ -229,7 +230,8 @@ class TestSessions:
         session_id = session.session_id
 
         # Small delay to ensure session file is written to disk
-        await asyncio.sleep(0.2)
+        # Increased to 0.5s to avoid flakiness on slower environments (e.g. Windows CI)
+        await asyncio.sleep(0.5)
 
         # Verify session exists in the list
         sessions = await ctx.client.list_sessions()
