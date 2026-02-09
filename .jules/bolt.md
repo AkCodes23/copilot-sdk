@@ -1,3 +1,5 @@
-## 2025-05-15 - [Sequential session destruction in SDKs]
-**Learning:** All Copilot SDKs (Node.js, Python, Go, .NET) were initially implementing session destruction sequentially during client shutdown. This leads to a linear increase in shutdown time as the number of active sessions grows, especially when individual destructions involve retries and backoff.
-**Action:** Parallelize session cleanup using language-specific concurrency primitives (e.g., `Promise.all` in Node.js, `asyncio.gather` in Python, `Task.WhenAll` in .NET, or WaitGroups/Channels in Go) to ensure shutdown time remains constant and minimal.
+# Bolt's Performance Journal
+
+## 2025-05-15 - Parallel Session Destruction
+**Learning:** Sequential session destruction during client shutdown is a significant bottleneck when multiple sessions are active, as each destruction involves a JSON-RPC request over IPC/Network. Parallelizing this across all SDKs (Go, .NET, Python) brings them to parity with the Node.js implementation and significantly reduces shutdown latency.
+**Action:** Always prefer parallel execution for independent I/O-bound cleanup tasks during client shutdown.

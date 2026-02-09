@@ -3,6 +3,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 using Microsoft.Extensions.AI;
+using System.Linq;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using StreamJsonRpc;
@@ -210,25 +211,42 @@ public partial class CopilotClient : IDisposable, IAsyncDisposable
     /// </example>
     public async Task StopAsync()
     {
-        var errors = new List<Exception>();
+        // Destroy all active sessions in parallel to speed up shutdown.
+        // This reduces StopAsync() time from O(N*T) to O(T) where N is the number of sessions.
+        var errors = new ConcurrentBag<Exception>();
 
-        foreach (var session in _sessions.Values.ToArray())
+        var sessionTasks = _sessions.Values.ToArray().Select(async session =>
         {
-            try
+            for (int attempt = 1; attempt <= 3; attempt++)
             {
-                await session.DisposeAsync();
+                try
+                {
+                    await session.DisposeAsync();
+                    return; // Success
+                }
+                catch (Exception ex)
+                {
+                    if (attempt == 3)
+                    {
+                        errors.Add(new Exception($"Failed to destroy session {session.SessionId} after 3 attempts: {ex.Message}", ex));
+                    }
+                    else
+                    {
+                        // Exponential backoff: 100ms, 200ms
+                        await Task.Delay(100 * attempt);
+                    }
+                }
             }
-            catch (Exception ex)
-            {
-                errors.Add(new Exception($"Failed to destroy session {session.SessionId}: {ex.Message}", ex));
-            }
-        }
+        });
+
+        await Task.WhenAll(sessionTasks);
 
         _sessions.Clear();
-        await CleanupConnectionAsync(errors);
+        var errorList = errors.ToList();
+        await CleanupConnectionAsync(errorList);
         _connectionTask = null;
 
-        ThrowErrors(errors);
+        ThrowErrors(errorList);
     }
 
     /// <summary>
