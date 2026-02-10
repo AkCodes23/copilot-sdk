@@ -327,9 +327,8 @@ class CopilotClient:
                         delay = 0.1 * (2 ** (attempt - 1))
                         await asyncio.sleep(delay)
 
-            return StopError(
-                message=f"Failed to destroy session {session.session_id} after 3 attempts: {last_error}"
-            )
+            msg = f"Failed to destroy session {session.session_id} after 3 attempts: {last_error}"
+            return StopError(message=msg)
 
         if sessions_to_destroy:
             # Parallelize session destruction to ensure O(T) shutdown time
