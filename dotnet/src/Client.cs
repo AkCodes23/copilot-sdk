@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using StreamJsonRpc;
 using System.Collections.Concurrent;
+using System.Linq;
 using System.Data;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -212,7 +213,8 @@ public partial class CopilotClient : IDisposable, IAsyncDisposable
     {
         var errors = new List<Exception>();
 
-        foreach (var session in _sessions.Values.ToArray())
+        // Destroy sessions in parallel to avoid linear shutdown time
+        var destroyTasks = _sessions.Values.ToArray().Select(async session =>
         {
             try
             {
@@ -220,9 +222,14 @@ public partial class CopilotClient : IDisposable, IAsyncDisposable
             }
             catch (Exception ex)
             {
-                errors.Add(new Exception($"Failed to destroy session {session.SessionId}: {ex.Message}", ex));
+                lock (errors)
+                {
+                    errors.Add(new Exception($"Failed to destroy session {session.SessionId}: {ex.Message}", ex));
+                }
             }
-        }
+        }).ToList();
+
+        await Task.WhenAll(destroyTasks);
 
         _sessions.Clear();
         await CleanupConnectionAsync(errors);
