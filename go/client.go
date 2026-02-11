@@ -294,11 +294,21 @@ func (c *Client) Stop() error {
 	}
 	c.sessionsMux.Unlock()
 
+	var wg sync.WaitGroup
+	var errsMux sync.Mutex
 	for _, session := range sessions {
-		if err := session.Destroy(); err != nil {
-			errs = append(errs, fmt.Errorf("failed to destroy session %s: %w", session.SessionID, err))
-		}
+		wg.Add(1)
+		go func(s *Session) {
+			defer wg.Done()
+			// Destroy sessions in parallel to avoid linear shutdown time
+			if err := s.Destroy(); err != nil {
+				errsMux.Lock()
+				errs = append(errs, fmt.Errorf("failed to destroy session %s: %w", s.SessionID, err))
+				errsMux.Unlock()
+			}
+		}(session)
 	}
+	wg.Wait()
 
 	c.sessionsMux.Lock()
 	c.sessions = make(map[string]*Session)
