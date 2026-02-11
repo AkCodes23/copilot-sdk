@@ -14,6 +14,7 @@ on:
         description: "PR number to review"
         required: true
         type: string
+if: secrets.COPILOT_GITHUB_TOKEN != ''
 roles: all
 permissions:
   contents: read

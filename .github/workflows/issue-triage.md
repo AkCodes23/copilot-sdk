@@ -9,6 +9,7 @@ on:
         description: "Issue number to triage"
         required: true
         type: string
+if: secrets.COPILOT_GITHUB_TOKEN != ''
 roles: all
 permissions:
   contents: read

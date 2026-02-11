@@ -313,13 +313,19 @@ class CopilotClient:
             sessions_to_destroy = list(self._sessions.values())
             self._sessions.clear()
 
-        for session in sessions_to_destroy:
-            try:
-                await session.destroy()
-            except Exception as e:
-                errors.append(
-                    StopError(message=f"Failed to destroy session {session.session_id}: {e}")
-                )
+        # Destroy sessions in parallel to avoid linear shutdown time
+        if sessions_to_destroy:
+            results = await asyncio.gather(
+                *[session.destroy() for session in sessions_to_destroy],
+                return_exceptions=True,
+            )
+            for session, result in zip(sessions_to_destroy, results):
+                if isinstance(result, Exception):
+                    errors.append(
+                        StopError(
+                            message=f"Failed to destroy session {session.session_id}: {result}"
+                        )
+                    )
 
         # Close client
         if self._client:
